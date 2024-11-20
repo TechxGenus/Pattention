@@ -175,9 +175,9 @@ def test_gelu_l2_norm(M, N, dtype, eps=1e-6, device='cuda'):
         x_names=['N'],
         x_vals=[512 * i for i in range(2, 32)],
         line_arg='provider',
-        line_vals=['triton', 'torch'],
-        line_names=['Triton', 'Torch'],
-        styles=[('blue', '-'), ('green', '-')],
+        line_vals=['triton', 'torch', 'torch_compiled'],
+        line_names=['Triton', 'Torch', 'Torch Compiled'],
+        styles=[('blue', '-'), ('green', '-'), ('red', '-')],
         ylabel='GB/s',
         plot_name='l2-norm-backward',
         args={'M': 4096, 'dtype': torch.float16, 'mode': 'backward'},
@@ -190,11 +190,18 @@ def bench_l2_norm(M, N, dtype, provider, mode='backward', eps=1e-6, device='cuda
     x.requires_grad_(True)
     quantiles = [0.5, 0.2, 0.8]
 
+    def torch_fn(x):
+        return torch.nn.functional.gelu(torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps) * math.sqrt(N))
+
+    compiled_fn = torch.compile(torch_fn)
+
     def y_fwd():
         if provider == "triton":
             return GeLUL2Norm.apply(x, eps)
         if provider == "torch":
-            return torch.nn.functional.gelu(torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps) * math.sqrt(N))
+            return torch_fn(x)
+        if provider == "torch_compiled":
+            return compiled_fn(x)
 
     # forward pass
     if mode == 'forward':
